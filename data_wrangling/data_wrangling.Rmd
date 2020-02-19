@@ -1,0 +1,406 @@
+---
+title: "Data wrangling"
+author: "Marc Pagès-Gallego"
+date: "03/02/2020"
+output: html_document
+---
+
+```{r}
+require(preprocessCore)
+require(sva)
+require(pcaMethods)
+require(gplots)
+require(e1071)
+```
+
+# Introduction
+
+Good models in machine learning require high quality data. Otherwise happens what we call "garbage in, garbage out". Furthermore, prediction models need standardized data; otherwise the trained model will only work for the same particular batch of data. For these reasons, the first steps in machine learning are composed of data exploration and quality control; and are crucial to ensure that all the downstream tasks are not doomed from the start.
+
+We will go through a checklist of the main tasks to do before embarking in any machine learning process. This includes:
+
+- Sample QC
+- Normalization
+- Scaling
+- Batch correction
+- Dealing with missing values
+- Data integration
+- Feature selection (pre-ML)
+
+In this notebook we will be using a transcriptomics dataset of ColoRectal Cancer (CRC). CRC has four different subtypes (CMS1, CMS2, CMS3 and CMS4) that it can be classified to (you can read more about it [here](https://www.nature.com/articles/nm.3967)). Our objective is to make sure that the data is ready to be used so that a subtype classifier can be trained from it.
+
+Before we start it is important to think about two characteristics about the data: 
+
+- **Type of data**: in this case it is microarray data, but for other types of data (rna-sequencing, metabolomics mass-spectrometry, proteomics mass-spectrometry, single-cell rna-sequencing, genomics...), although the core concepts of quality control and data standarization are applicable, the method to apply these concepts can be entirely different.
+- **Experiment design**: even within the same type of data, the design of the experiment will define which are the better or worse approaches to work with the data.
+
+# The dataset
+
+Loading the dataset
+```{r}
+sample_data <- read.table(file = 'rawdata/samples_data.txt', header = TRUE, sep = '\t')
+expr_data <- read.table(file = 'rawdata/expr_data.txt', header = TRUE, sep = '\t')
+gene_data <- read.table(file = 'rawdata/gene_data.txt', header = TRUE, sep = '\t')
+```
+
+- `sample_data`: contains the information about the different samples.
+- `expr_data`: contains the actual data on gene expression, rows = genes and columns = samples.
+- `gene_data`: contains the information about the measured genes: common names, different ids, etc.
+
+The dimensions of `expr_data` tell us about the amount of genes and samples.
+
+```{r}
+dim(expr_data)
+```
+We have 44 samples and 20545 genes.
+
+We can take a look at the `sample_data` data.frame to see how does our experiment look like.
+
+```{r}
+sample_data
+```
+
+```{r}
+str(sample_data)
+```
+
+We have 44 samples, some of them have replicates. There dataset has been measured in two batches and we have samples for all four different subtypes. Although they are not equally represented.
+
+```{r}
+table(sample_data$CMS)
+```
+
+# Data normalization
+
+Normalization is a very broad term that could also include data scaling and batch correction. For this notebook we will keep them separate and define normalization as the process to ensure that all the different samples are comparable between them. Statistically this translates to all samples having the same type of distribution.
+
+Again, think of the type of data that we are working with and the experiment design. Some examples:
+
+- Microarray data is composed of intensities, a continuous value, while rna-seq data is composed of counts, a discrete value. For these two methods, although both measure gene expression, not all normalization approaches will be valid. 
+- In proteomics we could measure whole-proteome or measure protein binding to a certain protein that is being pulled down. In the first case we could assume that all samples should have a similar total amount of protein, but in the second case that would not be possible since each different condition could give drastic changes to the amount of bound proteins. 
+
+## Just before we start
+
+This is microarray data that has already been background corrected using the [RMA method](https://academic.oup.com/biostatistics/article/4/2/249/245074), moreover the data is log2 transformed.
+
+## Looking at the data
+
+A good starting point is to plot the different samples using boxplots. This kind of visualization can give as a general overview of what is the data distribution in each sample.
+
+```{r}
+
+boxplot(expr_data)
+
+```
+
+<details>
+<summary>This plot already shows some interesting data distributions:</summary>
+
+- There are batch effects. These kind of batch effects should be already known in advance. It is important to know how the samples were processed and annotate which samples belong to which batch.
+
+- There are two samples that have a much lower overall gene expression, perhaps something went wrong with them.
+
+- Overall all most of the samples have a similar distribution with slighly different means.
+
+</details>
+
+## The weird samples
+
+Because normalization takes into account data from all the samples it is important to make sure that all the samples are actually good. At first glance there seems to be two bad samples. Therefore, we have to make a decision on what to do with them: 
+
+- We keep them.
+- We trash them.
+
+<details>
+<summary>What can we do to explore a bit better these samples?</summary>
+
+We can for example look at the amount of missing values, do they just have overall low expression of many genes or is it just that they are not measured at all.
+
+</details>
+
+```{r}
+apply(expr_data, 2, function(x) sum(is.na(x)))
+
+```
+
+We an see that more than 2/3 of the probes have a missing value. That is not a good sign and will definetly affect our normalization statistics. Therefore we can remove these samples.
+
+```{r}
+bad_samples <- which(apply(expr_data, 2, function(x) sum(is.na(x))) > 10000)
+
+expr_data <- expr_data[,-bad_samples]
+sample_data <- sample_data[-bad_samples,]
+```
+
+We can check back at the boxplot to see if we have removed the correct ones.
+
+```{r}
+boxplot(expr_data)
+```
+
+## Normalization approaches
+
+Now we can actually normalize the data. There are several methods to do so, some more correct than others depending on the experiment design and the data type. The important concept here is that we want to make the measurements of genes comparable between samples. 
+
+For example, if geneA has an expression of 2 in sampleA and an expression of 4 in sampleB; we want to be able to say that sampleB has double the expression because it is real and not because sampleB had double the input of mRNA in the microarray.
+
+And finally, normalization implies that we have some assumptions about the data and the experiment. Different normalization approaches imply different assumptions, and these can help us decide which method fits best for our experiment.
+
+<details>
+<summary>What would be some fair assumptions about this experiment:</summary>
+
+- All the samples should have a comparable total amount of mRNA.
+
+- All the samples should have similar distributions.
+
+</details>
+
+With these assumptions mean substraction, median subsetraction or quantiles normalization would work. Furthermore, it is quite established that for microarray data quantiles normalization works well. Nevertheless we can explore what would these normalizations do to our data distributions.
+
+### Mean substraction
+
+```{r}
+sample_mean <- apply(expr_data, 2, mean, na.rm = T)
+boxplot(sweep(x = expr_data, MARGIN = 2, STATS = sample_mean, FUN = '-'))
+
+```
+
+### Median substraction
+
+```{r}
+sample_median <- apply(expr_data, 2, median, na.rm = T)
+boxplot(sweep(x = expr_data, MARGIN = 2, STATS = sample_median, FUN = '-'))
+
+```
+
+### Quantiles normalization
+
+```{r}
+boxplot(preprocessCore::normalize.quantiles(as.matrix(expr_data)))
+
+```
+
+
+## Questions
+
+- Let's say you have done a proteomics pull down experiment on your favorite protein to see which are their binding partners. On one condition you have the WT protein; but in the other you deleted a piece of the protein genetically, and you expect that a significant portion of binding partners will not be able to bind now. How would you normalize such data?
+
+# Batch effect removal
+
+# Scaling
+
+Scaling is also part of the normalization process. Scaling can have different objectives:
+- Making datasets compatible: if one dataset is in log2 scale, but the other is in log10 scale they are not compatible because the same feature will have significant different ranges depending on the dataset.
+- Making features have the same importance:
+
+# Dealing with missing values
+
+Missing values are quite common and it is important to understand why they exist in our dataset. Again, consider the type of data and the experiment design when thinking about this.
+
+These are the different types:
+
+- **Missing completely at random**: as the name indicates, these are values that you did not measure because of bad luck. Perhaps the probe was defective, the peptide did not fly well in the mass spec, etc.
+- **Missing not at random**: these are values that are missing because of a reason. For example, the method has a limit of detection and this feature was below it. That does not mean that for example, the gene is not expressed, but rather we do not have the technology to detect its low level of expression. It could also be that the gene is actually not expressed at all because of a condition of the experiment. Or a metabolite is not detected because of the extraction method.
+- **Missing because of the data processing**: these should be quite easily detectable. These are actually values that we had measured at some point and that became missing because of some processing step. For example, we tried to take the log of a negative number or calculate the mean of a set that contained a `NA` value. It is important to always check our data before and after each processing step, and make sure that everything is as we expect it to be. 
+
+There are different types of missing values, it is crucial to be able to differentiate between them whenever possible since the methods that are used to deal with each type are different. Sadly, most of the times we have a combination of these different types and it can be difficuly to confidently tell which on is which. 
+
+In R missing values are usually denoted as `NA`, but it might be different in other platforms. Consider also if `0` is a missing value or not.
+
+Let's explore how many missing values we have.
+
+```{r}
+sum(is.na(expr_data))
+```
+
+And how many non missing values.
+
+```{r}
+sum(!is.na(expr_data))
+```
+
+So there are not so many missing values. Still we want to decide what to do with them. So let's try to find out which type of missing values are they. 
+
+<details>
+<summary>How would you check which kind of missing values are they?</summary>
+
+- See if there are any samples with a lot/very few missing values.
+
+- See if there are any features with a lot/very few missing values.
+
+- See in which part of the distribution are the missing values.
+
+</details>
+
+Missing values per sample.
+
+```{r}
+apply(expr_data, 2, function(x) sum(is.na(x)))
+
+hist(apply(expr_data, 2, function(x) sum(is.na(x))))
+```
+
+Seems that most samples have between 30-35 missing values. We actually already took care of two samples before that had a lot of missing values.
+
+Missing values per gene.
+
+```{r}
+table(apply(expr_data, 1, function(x) sum(is.na(x))))
+```
+
+Most genes have 0 missing values and then there are some have from 1 to 20. 
+
+<details>
+<summary>Notice anything strange about these values?</summary>
+
+- Why such a change from 2 to 18 missing values?.
+
+</details>
+
+Perhaps by using a heatmap we can spot what is happening.
+
+We can use colors to tell the different subtypes apart:
+- Orange: CMS1
+- Blue: CMS2
+- Green: CMS3
+- Yellow: CMS4
+
+```{r}
+colors <- c('CMS1' = "#E69F00", 'CMS2' = "#56B4E9", 
+            'CMS3' = "#009E73", 'CMS4' = "#F0E442")
+colors_vec <- sapply(sample_data$CMS, function(x) {
+  return(colors[as.character(x)])
+})
+```
+
+```{r}
+genes_with_nas <- which(apply(expr_data, 1, function(x) sum(is.na(x))) > 0)
+reduced_mat <- as.matrix(expr_data[genes_with_nas,])
+
+heatmap.2(reduced_mat, Rowv = NULL, Colv = NULL, 
+          dendrogram = 'none', scale = 'none', trace = 'none', 
+          ColSideColors = colors_vec, na.color = 'grey30')
+
+```
+
+<details>
+<summary>What are your first impressions?</summary>
+
+- It looks quite random, although most of the data is at the lower end of the expression distribution.
+
+</details>
+
+We can focus only on the genes that have less than 3 missing values.
+
+```{r}
+genes_with_nas <- which(apply(expr_data, 1, function(x) sum(is.na(x))) > 0 & 
+                          apply(expr_data, 1, function(x) sum(is.na(x))) < 3)
+reduced_mat <- as.matrix(expr_data[genes_with_nas,])
+
+heatmap.2(reduced_mat, Rowv = NULL, Colv = NULL,
+          dendrogram = 'none', scale = 'none', trace = 'none', 
+          ColSideColors = colors_vec, na.color = 'grey30')
+
+```
+
+<details>
+<summary>What are your first impressions?</summary>
+
+- Very similar to as before, this is expected since most of the genes had less than 3 missing values.
+
+</details>
+
+We can check the genes with more than 5 missing values
+
+```{r}
+genes_with_nas <- which(apply(expr_data, 1, function(x) sum(is.na(x))) > 5)
+reduced_mat <- as.matrix(expr_data[genes_with_nas,])
+
+heatmap.2(reduced_mat, Rowv = FALSE, Colv = FALSE, 
+          dendrogram = 'none', scale = 'none', trace = 'none', 
+          ColSideColors = colors_vec, na.color = 'grey30')
+
+```
+
+<details>
+<summary>What are your first impressions?</summary>
+
+- These are genes that are clear on the low end of expression. Probably missing because of the limit of detection. Besides that it would seem random.
+- There is one gene that stands out! it appears that is detected with high expression in all samples but the ones in CMS2!
+
+</details>
+
+So far we have explored our missing values. It looks like the majority of them are random, with enfasis at missing at random but with a detection limit component. Finally there is one gene that has not at random missing values.
+
+Now we have to decide what do we do with these missing values. Again, depending on the type of data and experiment we migth want to keep the missing values, remove them or impute them. It is important to decide whether the missingness of a value has information or not.
+
+Some options of what we can do:
+
+- The simple and extreme case would be to remove all genes with missing values. This is a simple method that will give you a dataset with no missing data. 
+- Another method would be to remove genes that have a lot of missing values but keep the ones with few missing values. The threshold is quite arbitrary.
+- Another method would be to impute them, this means giving them an actual measurement. But which measurement should we give them? This option even opens more options, in which we have to decide which imputation method we want to use, some examples would be:
+  - Use the average of the sample
+  - Use a value close to the limit of detection
+  - Impute it based on its most similar sample
+  
+<details>
+<summary>What would you do?</summary>
+
+Dealing with missing values is quite complex and is extremely dependent on the experiment. In this particular case our final objective is to build a predictor, a predictor needs to be robust, therefore using genes that are sometimes detected and sometimes not is not a good idea. Since most of the values seem random imputation based on the most similar sample would probably work fine. On the other hand, since there are not so many genes that actually have missing values we could also not use them.
+
+</details>
+
+We can also try different methods, and then see how the data looks like; specially in this case since we are adding data that will be as important as the real data we want to check that we are not creating any aberrations.
+
+Removing missing genes.
+
+```{r}
+genes_to_remove <- which(apply(expr_data, 1, function(x) sum(is.na(x))) > 0)
+
+reduced_data <- expr_data[-genes_to_remove,]
+
+```
+
+Setting missing values as the sample mean.
+
+```{r}
+mean_col <- apply(expr_data, 1, mean, rm.na = TRUE)
+imputed_data <- expr_data
+for (i in seq_len(ncol(imputed_data))) {
+  
+  col_data <- imputed_data[,i]
+  col_data[is.na(col_data)] <- mean_col[i]
+  imputed_data[,i] <- col_data
+  
+}
+
+```
+
+Setting missing values as a lower quantile value
+
+```{r}
+
+quantile(expr_data, na.rm = T)
+imputed_data <- expr_data
+imputed_data[is.na(imputed_data)] <- quantile(expr_data, na.rm = T)[1]
+
+```
+
+
+## Questions
+
+- How can you determine if a sample has too many missing values?
+
+
+# Feature selection (pre-ML)
+
+
+
+# Data integration
+
+
+# Conclusions
+
+In this notebook we have learned about some of the key aspects of data pre-processing, exploration and cleaning. Keep in mind, that the methods that we have applied here are particularly suited for this kind of data and experiment. It is of extreme importance to research which are the adequate methods for each type of dataset and type of experiment.
+
+Final note, all the impurities that this dataset had where added artifitially with teaching purpouses.
