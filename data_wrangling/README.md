@@ -6,6 +6,10 @@ We have data from the paper [Linnekamp paper](https://www.nature.com/articles/s4
 
 ## Scripts
 
+`download_dataset.R`: downloads the data.
+
+`parse_datasets.R`: extracts the downloaded data and adds the CMS subtypes to it.
+
 `process_datasets.R`: takes the microarray data and adds fake noise, bad samples, batch effects... to play with in the notebook. This fake raw data is stored in the rawdata folder.
 
 `data_wrangling.Rmd`: the notebook of the masterclass.
@@ -13,18 +17,17 @@ We have data from the paper [Linnekamp paper](https://www.nature.com/articles/s4
 ## Masterclass main points
 
 - Normalization (Marc)
+  - Polish and comment on other methods
 - Scaling
-- Bad samples (Marc)
+- Bad samples (Done)
 - Data integration
 - Feature selection
-- Batch correction
-- Missing values (Marc)
+- Batch correction (Done)
+- Missing values (Done)
 
 ## TODO
 
-- Finish the notebook.
-- Consider other main points.
-- Consider adding more noise to the data.
-- Consider summarizing the probesets into genes to reduce the data.
 - Keywords for Jeroen to introduce in his lecture.
 - Perhaps some introductory slides.
+- Prepare the second dataset to be predicted.
+- Prepare the functions for the SVM blackbox.
