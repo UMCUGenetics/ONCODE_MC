@@ -52,7 +52,7 @@ The dimensions of `expr_data` tell us about the amount of genes and samples.
 ```{r}
 dim(expr_data)
 ```
-We have 44 samples and 20545 genes.
+We have 56 samples and 20742 genes.
 
 We can take a look at the `sample_data` data.frame to see how does our experiment look like.
 
@@ -64,11 +64,25 @@ sample_data
 str(sample_data)
 ```
 
-We have 44 samples, some of them have replicates. There dataset has been measured in two batches and we have samples for all four different subtypes. Although they are not equally represented.
-
 ```{r}
 table(sample_data$CMS)
 ```
+
+<details>
+<summary>What can you say about the data?</summary>
+
+- There are 56 samples
+
+- Each sample is done in triplicate.
+
+- There are 3 batches.
+
+- Each replicate is in a different batch.
+
+- Not all CMS subtypes are represented equally.
+
+</details>
+
 
 # Data normalization
 
@@ -180,12 +194,154 @@ boxplot(preprocessCore::normalize.quantiles(as.matrix(expr_data)))
 
 ```
 
+```{r}
+norm_data <- preprocessCore::normalize.quantiles(as.matrix(expr_data))
+```
+
 
 ## Questions
 
-- Let's say you have done a proteomics pull down experiment on your favorite protein to see which are their binding partners. On one condition you have the WT protein; but in the other you deleted a piece of the protein genetically, and you expect that a significant portion of binding partners will not be able to bind now. How would you normalize such data?
+- Let's say you have done a proteomics pull down experiment on your favourite protein to see which are their binding partners. On one condition you have the WT protein; but in the other you deleted a piece of the protein genetically, and you expect that a significant portion of binding partners will not be able to bind now. How would you normalize such data?
 
 # Batch effect removal
+
+Batch effects are changes in the biological data that come from external factors. Different personnel performed the experiment, different machines, different days, different reagents...
+These are important to correct, since they can have an important effect on the data, and lead us to the wrong conclusions. For this reason it is important to check if we see any of these effects on the data. But even more important, is to know if we should expect these effects since we have designed and performed the experiment. And even if we have not done the experiment personally, we should know how it has been done.
+
+In the first boxplots that we made, we saw that there is some batch effect going on. We also know which are the samples that have been processed in the same batch from the `sample_data` data.frame.
+
+After we have normalized the data, it seems like the batch effect is gone. But is it really gone? Other approaches to check for batch effects are unsupervised clustering and dimensionality reduction. We will not go into detail about explaining these since they are not the objective of this notebook. They are actually explained in depth in the PCA and Clustering notebook.
+
+## Checking by PCA
+
+We can do a quick [Principle Components Analysis](https://en.wikipedia.org/wiki/Principal_component_analysis) (PCA) to see how the samples cluster together (similar samples should be together).
+
+<details>
+<summary>What do you expect to see in the PCA?</summary>
+
+- Samples from the same CMS should cluster together.
+
+- Triplicates witin the CMS cluster should be closer togher.
+
+</details>
+
+We will do a PCA and plot the socres of each sample and color them by CMS.
+
+```{r}
+pca_res <- pca(t(norm_data))
+plot(pca_res@scores[,1], pca_res@scores[,2], col = sample_data$CMS)
+```
+
+And the same plot colored by batch.
+
+```{r}
+plot(pca_res@scores[,1], pca_res@scores[,2], col = sample_data$batch)
+```
+
+<details>
+<summary>What do these PCA plots show?</summary>
+
+- There is still a clear batch effect since the samples are clustered by batch.
+</details>
+
+## Checking by distance matrix
+
+We can also calculate what is the distance between all the samples to see which ones are most similar and which are most different. 
+
+```{r}
+distance_matrix <- as.matrix(dist(t(norm_data), upper = TRUE, diag = TRUE))
+```
+
+```{r}
+cms_colors <- c('red', 'blue', 'green', 'black')
+batch_colors <- c('red', 'blue', 'green')
+cms_colors_col <- cms_colors[sample_data$CMS]
+batch_colors_col <- cms_colors[sample_data$batch]
+
+```
+
+```{r}
+
+heatmap.2(x = distance_matrix, 
+          trace = 'none', 
+          ColSideColors = cms_colors_col)
+
+```
+
+```{r}
+heatmap.2(x = distance_matrix, 
+          trace = 'none', 
+          ColSideColors = batch_colors_col)
+
+```
+
+<details>
+<summary>What do these heatmaps show?</summary>
+
+- There is still a clear batch effect since the samples are clustered by batch.
+</details>
+
+
+## Correcting the batch effect
+
+To correct the batch effect several methods have been implemented. For microarray data particularly, the [ComBat](https://academic.oup.com/biostatistics/article/8/1/118/252073) method has been shown to work particularly well. But for other types of data, single-cell rna-seq data there are other methods.
+
+Notice that batch correction is a supervised approach, meaning that we need to know *a priori* which are the different batches.
+
+```{r}
+
+batch_corr_data <- sva::ComBat(norm_data, batch = sample_data$batch)
+
+```
+
+Now try to explore again the batch corrected data and see what happened.
+
+
+## Explore by PCA
+
+```{r}
+pca_res <- pca(t(batch_corr_data))
+
+```
+
+```{r}
+
+plot(pca_res@scores[,1], pca_res@scores[,2], col = sample_data$CMS)
+
+```
+
+```{r}
+
+plot(pca_res@scores[,1], pca_res@scores[,2], col = sample_data$batch)
+
+```
+
+## Explore by distance 
+
+```{r}
+distance_matrix <- as.matrix(dist(t(batch_corr_data), upper = TRUE, diag = TRUE))
+```
+
+
+```{r}
+
+heatmap.2(x = distance_matrix, 
+          trace = 'none', 
+          ColSideColors = cms_colors_col)
+
+```
+
+```{r}
+heatmap.2(x = distance_matrix, 
+          trace = 'none', 
+          ColSideColors = batch_colors_col)
+
+```
+
+
+## Questions
+
+-  Why are not the different CMS subtypes clustered together even after normalization and batch correction?
 
 # Scaling
 
