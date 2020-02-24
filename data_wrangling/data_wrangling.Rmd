@@ -6,6 +6,7 @@ output: html_document
 ---
 
 ```{r}
+# packages that we need for the notebook
 require(preprocessCore)
 require(sva)
 require(pcaMethods)
@@ -108,7 +109,7 @@ boxplot(expr_data)
 ```
 
 <details>
-<summary>This plot already shows some interesting data distributions:</summary>
+<summary>This plot already shows some interesting data distributions. What do you see?</summary>
 
 - There are batch effects. These kind of batch effects should be already known in advance. It is important to know how the samples were processed and annotate which samples belong to which batch.
 
@@ -117,6 +118,7 @@ boxplot(expr_data)
 - Overall all most of the samples have a similar distribution with slighly different means.
 
 </details>
+
 
 ## The weird samples
 
@@ -131,6 +133,7 @@ Because normalization takes into account data from all the samples it is importa
 We can for example look at the amount of missing values, do they just have overall low expression of many genes or is it just that they are not measured at all.
 
 </details>
+
 
 ```{r}
 apply(expr_data, 2, function(x) sum(is.na(x)))
@@ -161,13 +164,14 @@ For example, if geneA has an expression of 2 in sampleA and an expression of 4 i
 And finally, normalization implies that we have some assumptions about the data and the experiment. Different normalization approaches imply different assumptions, and these can help us decide which method fits best for our experiment.
 
 <details>
-<summary>What would be some fair assumptions about this experiment:</summary>
+<summary>What would be some fair assumptions about this experiment?</summary>
 
 - All the samples should have a comparable total amount of mRNA.
 
 - All the samples should have similar distributions.
 
 </details>
+
 
 With these assumptions mean substraction, median subsetraction or quantiles normalization would work. Furthermore, it is quite established that for microarray data quantiles normalization works well. Nevertheless we can explore what would these normalizations do to our data distributions.
 
@@ -190,12 +194,12 @@ boxplot(sweep(x = expr_data, MARGIN = 2, STATS = sample_median, FUN = '-'))
 ### Quantiles normalization
 
 ```{r}
-boxplot(preprocessCore::normalize.quantiles(as.matrix(expr_data)))
+boxplot(normalize.quantiles(as.matrix(expr_data)))
 
 ```
 
 ```{r}
-norm_data <- preprocessCore::normalize.quantiles(as.matrix(expr_data))
+norm_data <- normalize.quantiles(as.matrix(expr_data))
 ```
 
 
@@ -211,6 +215,10 @@ These are important to correct, since they can have an important effect on the d
 In the first boxplots that we made, we saw that there is some batch effect going on. We also know which are the samples that have been processed in the same batch from the `sample_data` data.frame.
 
 After we have normalized the data, it seems like the batch effect is gone. But is it really gone? Other approaches to check for batch effects are unsupervised clustering and dimensionality reduction. We will not go into detail about explaining these since they are not the objective of this notebook. They are actually explained in depth in the PCA and Clustering notebook.
+
+**An extremely superficial explanation about PCA**: each gene is a dimension, to plot all the data in one go we would need a ~25000 dimensional plot (which is of course impossible). To solve that, we join all the genes that behave similarly in one dimension. In the plots, each dot is a sample, similar samples will be together in the 2D space; and different samples will be separated. Keep in mind that these 2 dimensions are a subset of all the data, which means that althoguh two samples migth seem far away in a dimension they might be close in another dimension.
+
+**An extremely superficial expalantion about unsupervised clustering just for this example**: we will calculate the distance between a sample and all the others samples. Samples are like points in ~25000 dimensional space, therefore we can calculate their distance like [this](https://getcalc.com/formula/geometry/distance-between-two-points.png). We can do this for all the samples and we can see which ones are most similars and which are not. Notice that the formula we are using is for Euclidean distance! There are other distances and each one has its purpouses and also assumptions!
 
 ## Checking by PCA
 
@@ -341,7 +349,7 @@ heatmap.2(x = distance_matrix,
 
 ## Questions
 
--  Why are not the different CMS subtypes clustered together even after normalization and batch correction?
+-  Why are not the different CMS subtypes not perfectly clustered together even after normalization and batch correction?
 
 # Scaling
 
@@ -550,6 +558,71 @@ imputed_data[is.na(imputed_data)] <- quantile(expr_data, na.rm = T)[1]
 
 # Feature selection (pre-ML)
 
+This part will very briefly touch on aleviating the amount of data given to to train/predict. We have measured ~25000 genes, but to predict the different subtypes just a few of them are necessary. In this follow-up [paper](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5864202/) they built a classifier with 113 probes. Therefore it would reduce the amount of computation time and difficulty for the algorithms if we could *a priori* reduce the amount of features.
+
+This part is highly dependent on the machine learning method used, some methods have feature selection already incorporated in the algorithm itself, while some others do not. You can read about it [here](http://topepo.github.io/caret/feature-selection-overview.html).
+
+Nevertheless, let's say that our algorithm does not have feature selection.
+
+<details>
+<summary>What kind of metrics could we used to reduce the amount of features?</summary>
+
+- Features that have near zero variance: if the expression of a gene does not change across samples it will not be informative.
+
+- Correlated features: if two or more genes have a highly correlated expression, they contain the same information.
+
+- Linear dependencies: if the expression of a gene can be calculated by the mathematical combination of two or more other genes. Quite unlikely for this type of data.
+
+</details>
+
+## Zero variance features
+
+We can check how many features have low variance.
+
+```{r}
+hist(apply(batch_corr_data, 1, var, na.rm = T), xlim = c(0, 5), breaks = 100)
+```
+
+As we can see, many of them have very low variance, these are not very informative. 
+
+<details>
+<summary>Does higher variance correlated with better class separation?</summary>
+
+- We actually do not know that. It simply tells us how disperse is a feature. 
+
+</details>
+
+In this case we could remove genes that have less than a certain variance threshold.
+
+```{r}
+relevant_genes <- which(apply(batch_corr_data, 1, var, na.rm = T) > 0.5)
+
+batch_corr_data <- batch_corr_data[relevant_genes,]
+
+length(relevant_genes)
+```
+
+## Highly correlated genes
+
+We could remove groups of genes that have high correlation, since in that case they would contain the same information.
+
+This of course requires to set up a threshold on what does high correlation means.
+
+
+```{r}
+
+descrCor <-  cor(batch_corr_data, use = 'complete.obs')
+
+hist(descrCor)
+```
+
+```{r}
+highCorr <- sum(abs(descrCor[upper.tri(descrCor)]) > .75)
+
+highCorr
+```
+
+For example, we see that there are `r highCorr` "highly" correlated genes.
 
 
 # Data integration
