@@ -14,9 +14,17 @@ require(gplots)
 require(e1071)
 ```
 
+# Before starting
+
+- The purpose of this notebook is to introduce the user to common practices in data quality control, normalization and cleaning for life sciences data. 
+- Please take a minute to think about why we are performing every step, do not rush through it. 
+- There are several questions along the notebook, try to answer them by yourself before looking at the answers or the next session.
+- If you want to try a specific data transformation that is not shown you can try to implement it yourself or ask for help and we can try to implement it.
+- The nice thing about data science is that you can try several things and see what is the outcome of each quite quickly, so try different approaches and explore!
+
 # Introduction
 
-Good models in machine learning require high quality data. Otherwise happens what we call "garbage in, garbage out". Furthermore, prediction models need standardized data; otherwise the trained model will only work for the same particular batch of data. For these reasons, the first steps in machine learning are composed of data exploration and quality control; and are crucial to ensure that all the downstream tasks are not doomed from the start.
+Good models in machine learning require high quality data. Otherwise happens what we call *garbage in, garbage out*. Furthermore, prediction models need standardized data; otherwise the trained model will only work for the same particular set of data that was used for training. For these reasons, the first steps in machine learning are composed of data exploration and quality control; and are crucial to ensure that all the downstream tasks are not doomed from the start.
 
 We will go through a checklist of the main tasks to do before embarking in any machine learning process. This includes:
 
@@ -28,25 +36,28 @@ We will go through a checklist of the main tasks to do before embarking in any m
 - Data integration
 - Feature selection (pre-ML)
 
-In this notebook we will be using a transcriptomics dataset of ColoRectal Cancer (CRC). CRC has four different subtypes (CMS1, CMS2, CMS3 and CMS4) that it can be classified to (you can read more about it [here](https://www.nature.com/articles/nm.3967)). Our objective is to make sure that the data is ready to be used so that a subtype classifier can be trained from it.
+In this notebook we will be using a transcriptomics dataset of ColoRectal Cancer (CRC). CRC has four different subtypes (CMS1, CMS2, CMS3 and CMS4) that it can be classified to (you can read more about it [here](https://www.nature.com/articles/nm.3967)). Our objective is to train a machine learning model to classify a CRC sample into the four subtypes. For example, this would be useful if different subtypes receive different treatments, and we want to make sure that a new patient gets the best treatment possible. But before we can do that, we want to make sure that the data is of good quality and can be used for machine learning.
 
 Before we start it is important to think about two characteristics about the data: 
 
-- **Type of data**: in this case it is microarray data, but for other types of data (rna-sequencing, metabolomics mass-spectrometry, proteomics mass-spectrometry, single-cell rna-sequencing, genomics...), although the core concepts of quality control and data standarization are applicable, the method to apply these concepts can be entirely different.
-- **Experiment design**: even within the same type of data, the design of the experiment will define which are the better or worse approaches to work with the data.
+- **Type of data**: in this case it is microarray data, but for other types of data (rna-sequencing, metabolomics mass-spectrometry, proteomics mass-spectrometry, single-cell rna-sequencing, genomics, ...), although the core concepts of quality control and data standarization are applicable, the method to apply these concepts can be entirely different.
+- **Experiment design**: even within the same type of data, the design of the experiment will define which are the better or worse approaches to work with the data. It is not the same to do full proteome than to do a proteomics IP.
 
 # The dataset
 
-Loading the dataset
+Loading the dataset: 
+
 ```{r}
 sample_data <- read.table(file = 'rawdata/samples_data.txt', header = TRUE, sep = '\t')
 expr_data <- read.table(file = 'rawdata/expr_data.txt', header = TRUE, sep = '\t')
 gene_data <- read.table(file = 'rawdata/gene_data.txt', header = TRUE, sep = '\t')
 ```
 
-- `sample_data`: contains the information about the different samples.
+We have just read 3 tables that contain the following information:
+
+- `sample_data`: contains information about the different samples.
 - `expr_data`: contains the actual data on gene expression, rows = genes and columns = samples.
-- `gene_data`: contains the information about the measured genes: common names, different ids, etc.
+- `gene_data`: contains information about the measured genes: common names, different ids, etc.
 
 The dimensions of `expr_data` tell us about the amount of genes and samples.
 
@@ -87,12 +98,17 @@ table(sample_data$CMS)
 
 # Data normalization
 
-Normalization is a very broad term that could also include data scaling and batch correction. For this notebook we will keep them separate and define normalization as the process to ensure that all the different samples are comparable between them. Statistically this translates to all samples having the same type of distribution.
+## What is data normalization?
 
-Again, think of the type of data that we are working with and the experiment design. Some examples:
+*Normalization* is a very broad term, it could also include data scaling and batch correction. For this notebook we will keep them separate and define normalization as the process to ensure that all the different samples are comparable between them.
+
+Again, think about the type of data that we are working with and about the design of the experiment. Some examples:
 
 - Microarray data is composed of intensities, a continuous value, while rna-seq data is composed of counts, a discrete value. For these two methods, although both measure gene expression, not all normalization approaches will be valid. 
 - In proteomics we could measure whole-proteome or measure protein binding to a certain protein that is being pulled down. In the first case we could assume that all samples should have a similar total amount of protein, but in the second case that would not be possible since each different condition could give drastic changes to the amount of bound proteins. 
+
+*Different types of data -> different approaches for normalization*
+*Different types of experiments -> different approaches for normalization*
 
 ## Just before we start
 
@@ -100,7 +116,7 @@ This is microarray data that has already been background corrected using the [RM
 
 ## Looking at the data
 
-A good starting point is to plot the different samples using boxplots. This kind of visualization can give as a general overview of what is the data distribution in each sample.
+A good starting point is to plot the different samples using [boxplots](https://en.wikipedia.org/wiki/Box_plot). This kind of visualization can give as a general overview of what is the data distribution in each sample.
 
 ```{r}
 
@@ -109,7 +125,7 @@ boxplot(expr_data)
 ```
 
 <details>
-<summary>This plot already shows some interesting data distributions. What do you see?</summary>
+<summary>This plot already shows some interesting distributions. What do you see?</summary>
 
 - There are batch effects. These kind of batch effects should be already known in advance. It is important to know how the samples were processed and annotate which samples belong to which batch.
 
@@ -120,7 +136,7 @@ boxplot(expr_data)
 </details>
 
 
-## The weird samples
+## The *weird* samples
 
 Because normalization takes into account data from all the samples it is important to make sure that all the samples are actually good. At first glance there seems to be two bad samples. Therefore, we have to make a decision on what to do with them: 
 
@@ -209,8 +225,8 @@ norm_data <- normalize.quantiles(as.matrix(expr_data))
 
 # Batch effect removal
 
-Batch effects are changes in the biological data that come from external factors. Different personnel performed the experiment, different machines, different days, different reagents...
-These are important to correct, since they can have an important effect on the data, and lead us to the wrong conclusions. For this reason it is important to check if we see any of these effects on the data. But even more important, is to know if we should expect these effects since we have designed and performed the experiment. And even if we have not done the experiment personally, we should know how it has been done.
+Batch effects are changes in the biological data that come from external factors. Different personnel performed the experiment, different machines, different days, different reagents, ...
+These are important to correct, since they can have an important effect on the data, and lead us to the wrong conclusions. For this reason, it is important to check if we see any of these effects on the data. But even more important, is to know if we should expect these effects since we have designed and performed the experiment. And even if we have not done the experiment personally, we should know how it has been done and what is its design.
 
 In the first boxplots that we made, we saw that there is some batch effect going on. We also know which are the samples that have been processed in the same batch from the `sample_data` data.frame.
 
@@ -218,7 +234,7 @@ After we have normalized the data, it seems like the batch effect is gone. But i
 
 **An extremely superficial explanation about PCA**: each gene is a dimension, to plot all the data in one go we would need a ~25000 dimensional plot (which is of course impossible). To solve that, we join all the genes that behave similarly in one dimension. In the plots, each dot is a sample, similar samples will be together in the 2D space; and different samples will be separated. Keep in mind that these 2 dimensions are a subset of all the data, which means that althoguh two samples migth seem far away in a dimension they might be close in another dimension.
 
-**An extremely superficial expalantion about unsupervised clustering just for this example**: we will calculate the distance between a sample and all the others samples. Samples are like points in ~25000 dimensional space, therefore we can calculate their distance like [this](https://getcalc.com/formula/geometry/distance-between-two-points.png). We can do this for all the samples and we can see which ones are most similars and which are not. Notice that the formula we are using is for Euclidean distance! There are other distances and each one has its purpouses and also assumptions!
+**An extremely superficial expalantion about unsupervised clustering just for this example**: we will calculate the distance between a sample and all the others samples. Samples are like points in ~25000 dimensional space, therefore we can calculate their distance like [this](https://getcalc.com/formula/geometry/distance-between-two-points.png). We can do this for all the samples and we can see which ones are most similars and which are not. Notice that the formula we are using is for Euclidean distance, there are other distances and each one has its purpouses and assumptions.
 
 ## Checking by PCA
 
@@ -229,11 +245,11 @@ We can do a quick [Principle Components Analysis](https://en.wikipedia.org/wiki/
 
 - Samples from the same CMS should cluster together.
 
-- Triplicates witin the CMS cluster should be closer togher.
+- Triplicates witin the CMS cluster should be closer together.
 
 </details>
 
-We will do a PCA and plot the socres of each sample and color them by CMS.
+We will do a PCA and plot the scores of each sample and color them by CMS.
 
 ```{r}
 pca_res <- pca(t(norm_data))
@@ -304,7 +320,6 @@ batch_corr_data <- sva::ComBat(norm_data, batch = sample_data$batch)
 
 Now try to explore again the batch corrected data and see what happened.
 
-
 ## Explore by PCA
 
 ```{r}
@@ -353,9 +368,15 @@ heatmap.2(x = distance_matrix,
 
 # Scaling
 
-Scaling is also part of the normalization process. Scaling can have different objectives:
-- Making datasets compatible: if one dataset is in log2 scale, but the other is in log10 scale they are not compatible because the same feature will have significant different ranges depending on the dataset.
-- Making features have the same importance:
+Scaling is also part of the normalization process. Scaling can be done on the samples and/or on the features.
+- Scaling of the samples is done to make datasets compatible. If one dataset is in log2 scale, but the other is in log10 scale they are not compatible because the same feature will have significant different ranges depending on the dataset.
+- Feature importance. It is important that features are all in a similar (if not the same) scale. For example, before we calculated the Euclidean distance, in it we calculated the difference between expression of genes. Let's consider that a geneA goes from expression of 1 to 1.2; in the same sample geneB goes from 0.1 to 0.2. geneB has quite a change in gene expression because it is doubled between samples; while geneA has a 20% increase. In Euclidean space now the difference is 0.2 and 0.1, making the change in expression of geneA the larger one.
+
+## Scaling methods
+
+There are several scaling methods, this [article](https://link.springer.com/article/10.1186/1471-2164-7-142) has a nice table with several scaling methods that can be used.
+
+![](img/scaling_table.png)
 
 # Dealing with missing values
 
