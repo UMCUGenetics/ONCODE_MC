@@ -5,26 +5,30 @@ date: "03/02/2020"
 output: html_document
 ---
 
-```{r}
+```{r, echo=TRUE, message = FALSE}
 # packages that we need for the notebook
 require(preprocessCore)
 require(sva)
 require(pcaMethods)
 require(gplots)
 require(e1071)
+source("black_box_svm.R")
 ```
 
 # Before starting
 
 - The purpose of this notebook is to introduce the user to common practices in data quality control, normalization and cleaning for life sciences data. 
 - Please take a minute to think about why we are performing every step, do not rush through it. 
-- There are several questions along the notebook, try to answer them by yourself before looking at the answers or the next session.
+- There are several questions along the notebook, try to answer them by yourself before looking at the answers or the next section.
 - If you want to try a specific data transformation that is not shown you can try to implement it yourself or ask for help and we can try to implement it.
 - The nice thing about data science is that you can try several things and see what is the outcome of each quite quickly, so try different approaches and explore!
+- Because bioinformatics is such a large field, it is impossible to cover all the possible scenarios, data types and data levels. Although the "techniques" that we will work on are mostly designed for omics datasets (transcriptomics, proteomics, metabolomics), try to transfer the presented ideas to your particular experiments.
 
 # Introduction
 
 Good models in machine learning require high quality data. Otherwise happens what we call *garbage in, garbage out*. Furthermore, prediction models need standardized data; otherwise the trained model will only work for the same particular set of data that was used for training. For these reasons, the first steps in machine learning are composed of data exploration and quality control; and are crucial to ensure that all the downstream tasks are not doomed from the start.
+
+In this notebook we will be using a transcriptomics dataset of ColoRectal Cancer (CRC). CRC has four different subtypes (CMS1, CMS2, CMS3 and CMS4) that it can be classified to (you can read more about it [here](https://www.nature.com/articles/nm.3967)). Our objective is to train a machine learning model to classify a CRC sample into the four subtypes. For example, this would be useful if different subtypes receive different treatments, and we want to make sure that a new patient gets the best treatment possible.
 
 We will go through a checklist of the main tasks to do before embarking in any machine learning process. This includes:
 
@@ -33,17 +37,21 @@ We will go through a checklist of the main tasks to do before embarking in any m
 - Scaling
 - Batch correction
 - Dealing with missing values
-- Data integration
-- Feature selection (pre-ML)
+- Quick ML model example
 
-In this notebook we will be using a transcriptomics dataset of ColoRectal Cancer (CRC). CRC has four different subtypes (CMS1, CMS2, CMS3 and CMS4) that it can be classified to (you can read more about it [here](https://www.nature.com/articles/nm.3967)). Our objective is to train a machine learning model to classify a CRC sample into the four subtypes. For example, this would be useful if different subtypes receive different treatments, and we want to make sure that a new patient gets the best treatment possible. But before we can do that, we want to make sure that the data is of good quality and can be used for machine learning.
+Let's think about two characteristics about the data: 
 
-Before we start it is important to think about two characteristics about the data: 
-
-- **Type of data**: in this case it is microarray data, but for other types of data (rna-sequencing, metabolomics mass-spectrometry, proteomics mass-spectrometry, single-cell rna-sequencing, genomics, ...), although the core concepts of quality control and data standarization are applicable, the method to apply these concepts can be entirely different.
-- **Experiment design**: even within the same type of data, the design of the experiment will define which are the better or worse approaches to work with the data. It is not the same to do full proteome than to do a proteomics IP.
+- **Type of data**: in this case it is microarray data, but for other types of data (RNA-sequencing, metabolomics mass-spectrometry, proteomics mass-spectrometry, single-cell RNA-sequencing, genomics, ...), although the core concepts of quality control and data standardization are applicable, the method to apply these concepts can be entirely different.
+- **Experiment design**: even within the same type of data, the design of the experiment will define which are the better or worse approaches to work with the data. It is not the same to do full proteome than to do a IP proteomics. When designing an experiment that will be mostly analyzed by bioinformatics it is extremely important to also include such bioinformatics analysis in the design process: *will I be able to properly normalize the data with the included samples? Do I have enough replicates? Should I include another sample to control for non-specific binding?* Bioinformatics does not do miracles for poorly designed experiments.
 
 # The dataset
+
+<details>
+<summary>A little secret</summary>
+
+- Although we are using the core data from the paper, it has been artificially modified to include examples of some problems that we might encounter in reality.
+
+</details>
 
 Loading the dataset: 
 
@@ -104,10 +112,11 @@ table(sample_data$CMS)
 
 Again, think about the type of data that we are working with and about the design of the experiment. Some examples:
 
-- Microarray data is composed of intensities, a continuous value, while rna-seq data is composed of counts, a discrete value. For these two methods, although both measure gene expression, not all normalization approaches will be valid. 
+- Microarray data is composed of intensities, a continuous value, while RNA-seq data is composed of counts, a discrete value. For these two methods, although both measure gene expression, not all normalization approaches will be valid. 
 - In proteomics we could measure whole-proteome or measure protein binding to a certain protein that is being pulled down. In the first case we could assume that all samples should have a similar total amount of protein, but in the second case that would not be possible since each different condition could give drastic changes to the amount of bound proteins. 
 
 *Different types of data -> different approaches for normalization*
+
 *Different types of experiments -> different approaches for normalization*
 
 ## Just before we start
@@ -144,23 +153,26 @@ Because normalization takes into account data from all the samples it is importa
 - We trash them.
 
 <details>
-<summary>What can we do to explore a bit better these samples?</summary>
+<summary>What can we do to explore a bit better these samples? Any ideas on what might be wrong with them?</summary>
 
 We can for example look at the amount of missing values, do they just have overall low expression of many genes or is it just that they are not measured at all.
 
 </details>
 
+Let's take a look at the amount of missing values
 
 ```{r}
+## sum the amount of missing values in each column (sample)
 apply(expr_data, 2, function(x) sum(is.na(x)))
 
 ```
 
-We an see that more than 2/3 of the probes have a missing value. That is not a good sign and will definetly affect our normalization statistics. Therefore we can remove these samples.
+We an see that more than 2/3 of the probes have a missing value. That is not a good sign and will definitely affect our normalization statistics. Therefore we can remove these samples.
 
 ```{r}
+## select column numbers with more than 10000 missing values
 bad_samples <- which(apply(expr_data, 2, function(x) sum(is.na(x))) > 10000)
-
+## remove such samples from our tables
 expr_data <- expr_data[,-bad_samples]
 sample_data <- sample_data[-bad_samples,]
 ```
@@ -170,6 +182,8 @@ We can check back at the boxplot to see if we have removed the correct ones.
 ```{r}
 boxplot(expr_data)
 ```
+
+Trashing samples is a simple method. It might be possible or not depending on the amount of samples that one has. Moreover, carefully consider if a bad sample is really due to technical error, perhaps there is some biology behind, and throwing away such samples might add bias to our experiment.
 
 ## Normalization approaches
 
@@ -221,7 +235,7 @@ norm_data <- normalize.quantiles(as.matrix(expr_data))
 
 ## Questions
 
-- Let's say you have done a proteomics pull down experiment on your favourite protein to see which are their binding partners. On one condition you have the WT protein; but in the other you deleted a piece of the protein genetically, and you expect that a significant portion of binding partners will not be able to bind now. How would you normalize such data?
+- Let's say you have done a proteomics pull down experiment on your favorite protein to see which are their binding partners. On one condition you have the WT protein; but in the other you deleted a piece of the protein genetically, and you expect that a significant portion of binding partners will not be able to bind now. How would you normalize such data?
 
 # Batch effect removal
 
@@ -232,9 +246,9 @@ In the first boxplots that we made, we saw that there is some batch effect going
 
 After we have normalized the data, it seems like the batch effect is gone. But is it really gone? Other approaches to check for batch effects are unsupervised clustering and dimensionality reduction. We will not go into detail about explaining these since they are not the objective of this notebook. They are actually explained in depth in the PCA and Clustering notebook.
 
-**An extremely superficial explanation about PCA**: each gene is a dimension, to plot all the data in one go we would need a ~25000 dimensional plot (which is of course impossible). To solve that, we join all the genes that behave similarly in one dimension. In the plots, each dot is a sample, similar samples will be together in the 2D space; and different samples will be separated. Keep in mind that these 2 dimensions are a subset of all the data, which means that althoguh two samples migth seem far away in a dimension they might be close in another dimension.
+**Quick explanation about PCA**: each gene is a dimension, to plot all the data in one go we would need a ~25000 dimensional plot (which is of course impossible). To solve that, we join all the genes that behave similarly in one dimension. In the plots, each dot is a sample, similar samples will be together in the 2D space; and different samples will be separated. Keep in mind that these 2 dimensions are a subset of all the data, which means that although two samples might seem far away in a dimension they might be close in another dimension. PCAs are also ordered by the amount of variance that they explain, therefore PC1 will show the most variance, then PC2, PC3...
 
-**An extremely superficial expalantion about unsupervised clustering just for this example**: we will calculate the distance between a sample and all the others samples. Samples are like points in ~25000 dimensional space, therefore we can calculate their distance like [this](https://getcalc.com/formula/geometry/distance-between-two-points.png). We can do this for all the samples and we can see which ones are most similars and which are not. Notice that the formula we are using is for Euclidean distance, there are other distances and each one has its purpouses and assumptions.
+**Quick explanation about unsupervised clustering**: we will calculate the distance between a sample and all the others samples. Samples are like points in ~25000 dimensional space, therefore we can calculate their distance like [this](https://getcalc.com/formula/geometry/distance-between-two-points.png). We can do this for all the samples and we can see which ones are most similars and which are not. Notice that the formula we are using is for Euclidean distance, there are other distances and each one has its purpouses and assumptions.
 
 ## Checking by PCA
 
@@ -245,20 +259,23 @@ We can do a quick [Principle Components Analysis](https://en.wikipedia.org/wiki/
 
 - Samples from the same CMS should cluster together.
 
-- Triplicates witin the CMS cluster should be closer together.
+- Triplicates within the CMS cluster should be closer together.
 
 </details>
 
 We will do a PCA and plot the scores of each sample and color them by CMS.
 
 ```{r}
+## calculate the PCA components
 pca_res <- pca(t(norm_data))
+## plot PC1 and PC2 and color by CMS subtype
 plot(pca_res@scores[,1], pca_res@scores[,2], col = sample_data$CMS)
 ```
 
 And the same plot colored by batch.
 
 ```{r}
+## color by batch
 plot(pca_res@scores[,1], pca_res@scores[,2], col = sample_data$batch)
 ```
 
@@ -273,7 +290,8 @@ plot(pca_res@scores[,1], pca_res@scores[,2], col = sample_data$batch)
 We can also calculate what is the distance between all the samples to see which ones are most similar and which are most different. 
 
 ```{r}
-distance_matrix <- as.matrix(dist(t(norm_data), upper = TRUE, diag = TRUE))
+## calculate the distance matrix between samples
+distance_matrix <- as.matrix(dist(t(norm_data), method = "euclidean", upper = TRUE, diag = TRUE))
 ```
 
 ```{r}
@@ -281,16 +299,16 @@ cms_colors <- c('red', 'blue', 'green', 'black')
 batch_colors <- c('red', 'blue', 'green')
 cms_colors_col <- cms_colors[sample_data$CMS]
 batch_colors_col <- cms_colors[sample_data$batch]
-
 ```
 
 ```{r}
-
 heatmap.2(x = distance_matrix, 
           trace = 'none', 
           ColSideColors = cms_colors_col)
 
 ```
+
+The more red the color, the more similar two samples are with each other. The colors at the top display the CMS subtype. Do you see any clusters?
 
 ```{r}
 heatmap.2(x = distance_matrix, 
@@ -298,6 +316,7 @@ heatmap.2(x = distance_matrix,
           ColSideColors = batch_colors_col)
 
 ```
+
 
 <details>
 <summary>What do these heatmaps show?</summary>
@@ -339,6 +358,8 @@ plot(pca_res@scores[,1], pca_res@scores[,2], col = sample_data$batch)
 
 ```
 
+- What has changed?
+
 ## Explore by distance 
 
 ```{r}
@@ -369,8 +390,12 @@ heatmap.2(x = distance_matrix,
 # Scaling
 
 Scaling is also part of the normalization process. Scaling can be done on the samples and/or on the features.
+
 - Scaling of the samples is done to make datasets compatible. If one dataset is in log2 scale, but the other is in log10 scale they are not compatible because the same feature will have significant different ranges depending on the dataset.
-- Feature importance. It is important that features are all in a similar (if not the same) scale. For example, before we calculated the Euclidean distance, in it we calculated the difference between expression of genes. Let's consider that a geneA goes from expression of 1 to 1.2; in the same sample geneB goes from 0.1 to 0.2. geneB has quite a change in gene expression because it is doubled between samples; while geneA has a 20% increase. In Euclidean space now the difference is 0.2 and 0.1, making the change in expression of geneA the larger one.
+
+- Feature importance. It is important that features are all in a similar (if not the same) scale. For example, before we calculated the Euclidean distance, in it we calculated the difference between expression of genes. Let's consider that a geneA goes from expression of 1 to 1.2; in the same sample geneB goes from 0.1 to 0.2. geneB has quite a change in gene expression because it is doubled between samples; while geneA has a 20% increase. In Euclidean space now the difference is 0.2 and 0.1, making the change in expression of geneA the larger one. Therefore consider, for your particular experiment, which features should be the important ones, if there should be any at all.
+
+In our example we already had the data a scaled a bit since we are working with log transformed values. Therefore making genes with really high expression less valuable compared to lower expressed genes. But we might consider scaling all the genes between 0-1, so that we only compare relative expression between samples.
 
 ## Scaling methods
 
@@ -388,9 +413,9 @@ These are the different types:
 - **Missing not at random**: these are values that are missing because of a reason. For example, the method has a limit of detection and this feature was below it. That does not mean that for example, the gene is not expressed, but rather we do not have the technology to detect its low level of expression. It could also be that the gene is actually not expressed at all because of a condition of the experiment. Or a metabolite is not detected because of the extraction method.
 - **Missing because of the data processing**: these should be quite easily detectable. These are actually values that we had measured at some point and that became missing because of some processing step. For example, we tried to take the log of a negative number or calculate the mean of a set that contained a `NA` value. It is important to always check our data before and after each processing step, and make sure that everything is as we expect it to be. 
 
-There are different types of missing values, it is crucial to be able to differentiate between them whenever possible since the methods that are used to deal with each type are different. Sadly, most of the times we have a combination of these different types and it can be difficuly to confidently tell which on is which. 
+There are different types of missing values, it is crucial to be able to differentiate between them whenever possible since the methods that are used to deal with each type are different. Sadly, most of the times we have a combination of these different types and it can be difficult to confidently tell which on is which. 
 
-In R missing values are usually denoted as `NA`, but it might be different in other platforms. Consider also if `0` is a missing value or not.
+In R missing values are usually denoted as `NA`, but it might be different in other platforms. Consider also if `0` is a missing value or means that it was not truly measured.
 
 Let's explore how many missing values we have.
 
@@ -425,7 +450,7 @@ apply(expr_data, 2, function(x) sum(is.na(x)))
 hist(apply(expr_data, 2, function(x) sum(is.na(x))))
 ```
 
-Seems that most samples have between 30-35 missing values. We actually already took care of two samples before that had a lot of missing values.
+Seems that most samples have between 30-35 missing values. We actually already took care of two samples before that had a lot of missing values. So it doesn't look like there is anything too worrying here. If all the missing values where in one sample for example, then we might want to further investigate that.
 
 Missing values per gene.
 
@@ -459,6 +484,7 @@ colors_vec <- sapply(sample_data$CMS, function(x) {
 ```
 
 ```{r}
+## reduce the plot to only genes that at least 1 missing value
 genes_with_nas <- which(apply(expr_data, 1, function(x) sum(is.na(x))) > 0)
 reduced_mat <- as.matrix(expr_data[genes_with_nas,])
 
@@ -471,15 +497,15 @@ heatmap.2(reduced_mat, Rowv = NULL, Colv = NULL,
 <details>
 <summary>What are your first impressions?</summary>
 
-- It looks quite random, although most of the data is at the lower end of the expression distribution.
+- It looks quite random, although most of the data is at the lower end of the expression distribution. Probably most of these missing values are just "random" because of the limit of detection.
 
 </details>
 
-We can focus only on the genes that have less than 3 missing values.
+We can focus only on the genes that have between 1 and 5 missing values.
 
 ```{r}
 genes_with_nas <- which(apply(expr_data, 1, function(x) sum(is.na(x))) > 0 & 
-                          apply(expr_data, 1, function(x) sum(is.na(x))) < 3)
+                          apply(expr_data, 1, function(x) sum(is.na(x))) < 6)
 reduced_mat <- as.matrix(expr_data[genes_with_nas,])
 
 heatmap.2(reduced_mat, Rowv = NULL, Colv = NULL,
@@ -515,9 +541,9 @@ heatmap.2(reduced_mat, Rowv = FALSE, Colv = FALSE,
 
 </details>
 
-So far we have explored our missing values. It looks like the majority of them are random, with enfasis at missing at random but with a detection limit component. Finally there is one gene that has not at random missing values.
+So far we have explored our missing values. It looks like the majority of them are random, with emphasis at missing at random but with a detection limit component. Finally there is one gene that has not at random missing values.
 
-Now we have to decide what do we do with these missing values. Again, depending on the type of data and experiment we migth want to keep the missing values, remove them or impute them. It is important to decide whether the missingness of a value has information or not.
+Now we have to decide what do we do with these missing values. Again, depending on the type of data and experiment we might want to keep the missing values, remove them or impute them. It is important to decide whether the missingness of a value has information or not.
 
 Some options of what we can do:
 
@@ -561,7 +587,7 @@ for (i in seq_len(ncol(imputed_data))) {
 
 ```
 
-Setting missing values as a lower quantile value
+Setting missing values as a lower quantile value.
 
 ```{r}
 
@@ -569,21 +595,27 @@ quantile(expr_data, na.rm = T)
 imputed_data <- expr_data
 imputed_data[is.na(imputed_data)] <- quantile(expr_data, na.rm = T)[1]
 
-```
+norm_imputed <- normalize.quantiles(as.matrix(imputed_data))
 
+norm_imputed_batchcorr <- sva::ComBat(norm_imputed, batch = sample_data$batch)
+
+```
 
 ## Questions
 
 - How can you determine if a sample has too many missing values?
+- When do we impute/remove missing values? Before or after normalization?
 
 
 # Feature selection (pre-ML)
 
-This part will very briefly touch on aleviating the amount of data given to to train/predict. We have measured ~25000 genes, but to predict the different subtypes just a few of them are necessary. In this follow-up [paper](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5864202/) they built a classifier with 113 probes. Therefore it would reduce the amount of computation time and difficulty for the algorithms if we could *a priori* reduce the amount of features.
+This part will very briefly touch on aleviating the amount of data given to to train/predict. We have measured ~25000 genes, but to predict the different subtypes just a few of them are necessary. In this follow-up [paper](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5864202/) they built a classifier with 113 probes. Therefore it would reduce the amount of computation time and difficulty for the algorithms if we could *a priori* reduce the amount of features. There is also the consideration of robustness, reducing the amount of required features is nice, but reducing it too much might make our method too unstable, having some redundancy is also nice.
 
 This part is highly dependent on the machine learning method used, some methods have feature selection already incorporated in the algorithm itself, while some others do not. You can read about it [here](http://topepo.github.io/caret/feature-selection-overview.html).
 
 Nevertheless, let's say that our algorithm does not have feature selection.
+
+**IMPORTANT**: feature selection is part of ML, therefore we must apply cross-validation methods to ensure that we are not overestimating the performance of our model. 
 
 <details>
 <summary>What kind of metrics could we used to reduce the amount of features?</summary>
@@ -592,7 +624,7 @@ Nevertheless, let's say that our algorithm does not have feature selection.
 
 - Correlated features: if two or more genes have a highly correlated expression, they contain the same information.
 
-- Linear dependencies: if the expression of a gene can be calculated by the mathematical combination of two or more other genes. Quite unlikely for this type of data.
+- Linear dependencies: if the expression of a gene can be calculated by the mathematical combination of two or more other genes. 
 
 </details>
 
@@ -601,13 +633,13 @@ Nevertheless, let's say that our algorithm does not have feature selection.
 We can check how many features have low variance.
 
 ```{r}
-hist(apply(batch_corr_data, 1, var, na.rm = T), xlim = c(0, 5), breaks = 100)
+hist(apply(batch_corr_data, 1, var, na.rm = T), xlim = c(0, 5), breaks = 100, main = "Variance")
 ```
 
 As we can see, many of them have very low variance, these are not very informative. 
 
 <details>
-<summary>Does higher variance correlated with better class separation?</summary>
+<summary>Does higher variance correlate with better class separation?</summary>
 
 - We actually do not know that. It simply tells us how disperse is a feature. 
 
@@ -625,7 +657,7 @@ length(relevant_genes)
 
 ## Highly correlated genes
 
-We could remove groups of genes that have high correlation, since in that case they would contain the same information.
+We could remove groups of genes that have high correlation, since in that case they would contain the same information. 
 
 This of course requires to set up a threshold on what does high correlation means.
 
@@ -637,20 +669,80 @@ descrCor <-  cor(batch_corr_data, use = 'complete.obs')
 hist(descrCor)
 ```
 
-```{r}
-highCorr <- sum(abs(descrCor[upper.tri(descrCor)]) > .75)
+Perhaps we could compress all the highly correlated genes into a single meta-gene. This would be essentially PCA, which also includes the variance problem described above in it.
 
-highCorr
+# Some quick ML
+
+We can try different combinations of the above described methods (normalization, scaling, dealing with missing values) and see what is their effect on training a model.
+
+To get some reliable values we will do a simple quick cross-validation by setting up a subset of the samples separated. Let's keep for example the 3rd batch out.
+
+## With normalization, imputation and batch correction
+
+```{r}
+
+x_train <- norm_imputed_batchcorr[, sample_data$batch %in% c(1, 2)]
+x_validation <- norm_imputed_batchcorr[, sample_data$batch %in% c(3)]
+y_train <- sample_data$CMS[sample_data$batch %in% c(1, 2)]
+y_validation <- sample_data$CMS[sample_data$batch %in% c(3)]
+
 ```
 
-For example, we see that there are `r highCorr` "highly" correlated genes.
+```{r}
 
+model <- build_model(x_train, y_train)
+predictions <- predict_new_data(x_validation, model)
+performance(y_validation, predictions)
 
-# Data integration
+```
 
+Let's try with other datasets, for example if we use `norm_imputed` that has not been batch corrected, will it work? You can try other states of the dataset, unfortunately this machine learning method does not deal automatically with missing values, so you will have to take care of them first.
+
+## With normalization, imputation and NOT batch correction
+
+```{r}
+
+x_train <- norm_imputed[, sample_data$batch %in% c(1, 2)]
+x_validation <- norm_imputed[, sample_data$batch %in% c(3)]
+y_train <- sample_data$CMS[sample_data$batch %in% c(1, 2)]
+y_validation <- sample_data$CMS[sample_data$batch %in% c(3)]
+
+```
+
+```{r}
+
+model <- build_model(x_train, y_train)
+predictions <- predict_new_data(x_validation, model)
+performance(y_validation, predictions)
+
+```
+
+## With normalization, imputation, batch correction and randomized labels
+
+```{r}
+
+x_train <- norm_imputed[, sample_data$batch %in% c(1, 2)]
+x_validation <- norm_imputed[, sample_data$batch %in% c(3)]
+y_train <- sample_data$CMS[sample_data$batch %in% c(1, 2)]
+y_validation <- sample_data$CMS[sample_data$batch %in% c(3)]
+
+y_train <- sample(y_train, length(y_train))
+
+```
+
+```{r}
+
+model <- build_model(x_train, y_train)
+predictions <- predict_new_data(x_validation, model)
+performance(y_validation, predictions)
+
+```
+
+# Beyond data wrangling
+
+- Cross-validation
+- Class balance
 
 # Conclusions
 
 In this notebook we have learned about some of the key aspects of data pre-processing, exploration and cleaning. Keep in mind, that the methods that we have applied here are particularly suited for this kind of data and experiment. It is of extreme importance to research which are the adequate methods for each type of dataset and type of experiment.
-
-Final note, all the impurities that this dataset had where added artifitially with teaching purpouses.

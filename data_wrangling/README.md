@@ -1,33 +1,25 @@
 # Data wrangling
 
-## Intro
+## Introduction
 
-We have data from the paper [Linnekamp paper](https://www.nature.com/articles/s41418-017-0011-5). It is gene expression measured using microarrays.
+In this notebook we will be using a transcriptomics dataset of ColoRectal Cancer (CRC). CRC has four different subtypes (CMS1, CMS2, CMS3 and CMS4) that it can be classified to (you can read more about it [here](https://www.nature.com/articles/nm.3967)). Our objective is to train a machine learning model to classify a CRC sample into the four subtypes.
 
-## Scripts
+We will go through a checklist of the main tasks to do before embarking in any machine learning process. This includes:
 
-`download_dataset.R`: downloads the data.
-
-`parse_datasets.R`: extracts the downloaded data and adds the CMS subtypes to it.
-
-`process_datasets.R`: takes the microarray data and adds fake noise, bad samples, batch effects... to play with in the notebook. This fake raw data is stored in the rawdata folder.
-
-`data_wrangling.Rmd`: the notebook of the masterclass.
-
-## Masterclass main points
-
-- Normalization (Marc)
-  - Polish and comment on other methods
+- Sample QC
+- Normalization
 - Scaling
-- Bad samples (Done)
-- Data integration
-- Feature selection
-- Batch correction (Done)
-- Missing values (Done)
+- Batch correction
+- Dealing with missing values
+- Quick ML model example
 
-## TODO
+## Binder
 
-- Keywords for Jeroen to introduce in his lecture.
-- Perhaps some introductory slides.
-- Prepare the second dataset to be predicted.
-- Prepare the functions for the SVM blackbox.
+This link can be used to have an interactive session and run the code
+
+Binder link: https://mybinder.org/v2/gh/marcpaga/oncode_mc_2020_data_wrangling/HEAD
+
+## Files
+
+`data_wrangling.Rmd`: the notebook for the masterclass, for interactive purposes.
+`data_wrangling.html`: static image of the above notebook.
