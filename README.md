@@ -1,4 +1,11 @@
 ## Topics
 
-* RandomForest
-* Deep Learning 2: Generative Adversarial Networks
+* Data wrangling: Data preparation accounts for about 80% of the work of data scientists (source CrowdFlower data science report 2016). In this workshop, we will expose the common pitfalls one can do when working with cancer genomics datasets, from the treatment of missing data to normalisation and feature selection (for ML purpose).
+* Clustering: Clustering basics: we will explore commonly used clustering algorithms such as hierarchical clustering and k-means clustering, and apply this knowledge to identify clusters in an expression dataset of breast cancer patients.
+* Random forest: Random forest (RF) is an ensemble-based classification method that aggregates the predictive outcomes of multiple decision trees to overcome the bias and error of weak-learning classifiers. In this session, we will explore how to implement RF models in Python and apply it to genomic datasets.
+* Deep Learning 1: Image classification with Deep Learning in Python: join the journey of building a simple CNN model with Keras – this example will also entail some more generic ML know-how about cross-validation, imbalanced class case handling and more.
+* Deep Learning 2: Data augmentation with Generative Adversarial Networks (GANs): an introduction to GANs and how they can be applied to augment a training set for the purpose of improving the performance of a classifier
+* Transfer Learning: Machine learning models are often used to predict labels on a dataset different from the one used for training, even for datasets that diverge only slightly from the training data, this usually leads to a drop in predictive performance. In this session, we will explore approaches to train and correct a predictive machine learning model in order to achieve robust performance on datasets from other domains, e.g. training a drug response predictor on cell lines and then employing it to predict patient response.
+
+
+More information on the event, please visit website: https://www.oncode.nl/events/masterclass-introduction-to-machine-learning-in-cancer-genomics
