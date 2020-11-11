@@ -11,4 +11,4 @@ We will use this dataset to perform some necessary pre-processing steps, feature
 ## Binder web-based interactive jupyter notebook
 Binder is a platform to open github jupyter notebooks in an executable environment. Click on the link below to launch the notebook for this session:
  
-binder link: ![https://mybinder.org/v2/gh/UMCUGenetics/ONCODE_MC/79bd5bd67ade0bfc835885702b0d2175ce4a931f](https://mybinder.org/v2/gh/UMCUGenetics/ONCODE_MC/79bd5bd67ade0bfc835885702b0d2175ce4a931f)
+binder link: https://mybinder.org/v2/gh/UMCUGenetics/ONCODE_MC/79bd5bd67ade0bfc835885702b0d2175ce4a931f
