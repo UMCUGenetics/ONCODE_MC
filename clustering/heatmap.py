@@ -8,7 +8,7 @@ from scipy.spatial import distance as _distance
 import scipy.cluster.hierarchy as _hierarchy
 import matplotlib.pyplot as _plt
 from mpl_toolkits import axes_grid1 as _axes_grid1
-from mpl_toolkits.axes_grid1 import SubplotDivider, LocatableAxes, Size
+from mpl_toolkits.axes_grid1 import SubplotDivider, Size
 
 
 __version__ = "0.1.3.dev0"
