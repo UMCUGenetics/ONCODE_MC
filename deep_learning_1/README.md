@@ -1,9 +1,5 @@
 # Deep Learning I.
 
-This session will explore clustering. 
-The exercises start from a beginners level with explanations, and continue to more advanced exercises. You can start wherever you want based on your expertise level. 
-
-
 ## Quick Start Guide
 
 1. First you need to mount the shared GDrive dataset before we load the files.
