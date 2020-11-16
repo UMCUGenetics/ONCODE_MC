@@ -1,6 +1,8 @@
-name: oncode-mc-test
+name: oncode-mc
 channels:
   - powerai
+  - pytorch
+  - anaconda
   - conda-forge
   - bioconda
   - r
@@ -53,6 +55,7 @@ dependencies:
   - compiler-rt=10.0.1=he6db49b_0
   - compiler-rt_osx-64=10.0.1=h033240e_0
   - cryptography=3.2.1=py37h3b7a55b_0
+  - cudatoolkit=9.0=h41a26b3_0
   - curl=7.71.1=hcb81553_8
   - cycler=0.10.0=py_2
   - cytoolz=0.11.0=py37h60d8a13_1
@@ -159,6 +162,7 @@ dependencies:
   - matplotlib=3.3.3=py37hf985489_0
   - matplotlib-base=3.3.3=py37hdacc966_0
   - mistune=0.8.4=py37h4b544eb_1002
+  - mkl=2020.4=h08c4f10_301
   - mpc=1.1.0=ha57cd0f_1009
   - mpfr=4.0.2=h72d8aaf_1
   - mysql-common=8.0.21=2
@@ -170,6 +174,7 @@ dependencies:
   - nest-asyncio=1.4.3=pyhd8ed1ab_0
   - nettle=3.4.1=h3efe00b_1002
   - networkx=2.5=py_0
+  - ninja=1.10.1=h445f430_2
   - notebook=6.1.5=py37hf985489_0
   - nspr=4.29=hb1e8313_1
   - nss=3.47=hc0980d9_0
@@ -212,6 +217,7 @@ dependencies:
   - python=3.7.8=hc9dea61_1_cpython
   - python-dateutil=2.8.1=py_0
   - python_abi=3.7=1_cp37m
+  - pytorch=1.4.0=py3.7_0
   - pytz=2020.4=pyhd8ed1ab_0
   - pywavelets=1.1.1=py37h57c32b8_3
   - pyyaml=5.3.1=py37h395d20d_1
@@ -300,9 +306,12 @@ dependencies:
   - tk=8.6.10=hb0a8c7a_1
   - tktable=2.10=h49f0cf7_3
   - toolz=0.11.1=py_0
+  - torchaudio=0.4.0=py37
+  - torchvision=0.5.0=py37_cpu
   - tornado=6.1=py37h4b544eb_0
   - tqdm=4.51.0=pyh9f0ad1d_0
   - traitlets=5.0.5=py_0
+  - typing=3.7.4.3=py37hc8dfbb8_1
   - urllib3=1.25.11=py_0
   - wcwidth=0.2.5=pyh9f0ad1d_2
   - webencodings=0.5.1=py_1
