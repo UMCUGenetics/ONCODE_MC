@@ -1,6 +1,6 @@
 # Deep Learning II.
 
-<a href="https://colab.research.google.com/github/UMCUGenetics/ONCODE_MC/blob/master/deep_learning_2/ONCODE_Masterclass_Deep_Learning2_GANs_Colab_CPU.ipynb">
+<a href="https://colab.research.google.com/github/UMCUGenetics/ONCODE_MC/blob/master/deep_learning_2/Deep_Learning_2.ipynb">
   <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
 </a>
 
